@@ -24,6 +24,44 @@
    3062 1.11e-16-1             php -1                     pl -1                     py -0.9999999999999999    rb -0.9999999999999999
    3286 04294967297            php 34                     py                        rb foo.rb:1: Invalid octal digit
  24228 print"-"               php -1                     py -                      rb -
+
+
+```javascript
+/* still needs work... we need to visualize as a graph, not list of lists... */
+Infinity > 9007199254740992 > true == 1 == 1.0 > 5.551115123125783e-17 > false == 0 == 0.0
+eval > (function(){}) > {} > [] > -1 == -1.0 > -9007199254740992 > -Infinity
+NaN
+-NaN
+Math > ""
+undefined == null
+```
+
+```python
+# python's ordinality allows us to construct bizarre expressions
+>>> import sys
+>>> xrange(0) > unicode() > type > object > Exception > () > "" > sys > range(1) > [] == range(0) > (lambda x:x) > Exception() > {} > bytearray() > help > float("inf") > sys.float_info.max > sys.maxint > True == 1 == 1L == 1.0 > sys.float_info.epsilon > sys.float_info.min > False == 0 == 0L == 0.0 > -1 == -1L == -1.0 > -sys.maxint > -float("inf") > None
+True
+>>> class ClassA: pass
+...
+>>> class ClassB: pass
+...
+>>> xrange(0) > unicode() > type > object > Exception > () > "" > sys > range(1) > [] == range(0) > (lambda x:x) > Exception() > {} > ClassB > ClassA > bytearray() > help > float("inf") > sys.float_info.max > sys.maxint > True == 1 == 1L == 1.0 > sys.float_info.epsilon > sys.float_info.min > False == 0 == 0L == 0.0 > -1 == -1L == -1.0 > -sys.maxint > -float("inf") > None
+True
+# NaN is != everything
+float("nan")
+-float("nan")
+# complex numbers can be compared to most things... except themselves
+0j
+1j
+-1j
+1.0j
+0.0j
+-1.0j
+# set ordinality, unlike almost everything else, cares about type
+set()
+# None is < everything
+None
+```
 """
 
 """
@@ -62,6 +100,27 @@ Operators
 """
 
 import os, re
+import networkx as nx
+import json
+
+class Types:
+    UNKNOWN     = 0 # didn't even try
+    UNDECIDED   = 1 # tried, couldn't tell
+    ERR_CRASH   = 2 # crash program
+    ERR_COMPILE = 3
+    ERR_RUN     = 4
+    TYPE        = 5
+    NULL        = 6
+    BOOL        = 7
+    INT         = 8
+    FLOAT       = 9
+    COMPLEX     = 10
+    SEQUENCE    = 11
+    SET         = 12
+    FUNC        = 13
+    CLASS       = 14
+    OBJ         = 15
+    MODULE      = 16
 
 class Lang:
     name = 'FIXME'
@@ -136,46 +195,22 @@ class Perl(Lang):
             output = p.readline()
         return output.strip()
 
-class Javascript(Lang):
-    name = 'js'
-    @staticmethod
-    def run(code):
-        with os.popen('timeout 1 js > foo.js.out', 'w') as p:
-            p.write(code + '\n')
-        with open('foo.js.out') as out:
-            output = out.readline()[2:].strip() # toss "> " prompt prefix
-        return output.strip()
-    @staticmethod
-    def is_nop(msg):
-        return msg == '' or msg == '>' or msg == '...'
-
-class Types:
-    UNKNOWN     = 0 # didn't even try
-    UNDECIDED   = 1 # tried, couldn't tell
-    ERR_CRASH   = 2 # crash program
-    ERR_COMPILE = 3
-    ERR_RUN     = 4
-    TYPE        = 5
-    NULL        = 6
-    BOOL        = 7
-    INT         = 8
-    FLOAT       = 9
-    COMPLEX     = 10
-    SEQUENCE    = 11
-    SET         = 12
-    FUNC        = 13
-    CLASS       = 14
-    OBJ         = 15
-    MODULE      = 16
-
 class Value:
     def __init__(self, type, val):
         self.type = type
         self.val = val
     def __repr__(self):
         return str(self.val)
+    def __str__(self):
+        return self.__repr__()
+    def __hash__(self):
+        return self.val.__hash__()
     def __eq__(self, other):
-        return self.type == other.type and self.val == other.val
+        if type(other) == type(''):
+            return self.val == other
+        elif type(other) == type(self):
+            return self.type == other.type and self.val == other.val
+        return False
 
 class Unknown(Value):
     def __init__(self, val):
@@ -234,9 +269,8 @@ class Module(Value):
         Value.__init__(self, Types.MODULE, val)
 
 
-# ref: http://docs.python.org/reference/datamodel.html
-
 class Python(Lang):
+    # ref: http://docs.python.org/reference/datamodel.html
 
     name = 'py'
     prelude = \
@@ -332,7 +366,7 @@ class Python(Lang):
             Sequence('[]'),
             Sequence('range(0)'),
             Sequence('xrange(0)'),
-            Sequence('xrange(sys.maxint)'),
+            #Sequence('xrange(sys.maxint)'),
             Sequence('bytearray()'),
         ]
     def sets(self): return [
@@ -346,13 +380,13 @@ class Python(Lang):
         ]
     def classes(self): return [
             Class('Exception'),
-            Class('ClassA'),
-            Class('ClassB'),
+            #Class('ClassA'),
+            #Class('ClassB'),
         ]
     def objects(self): return [
-            Object('Exception()'),
-            Object('ClassA()'),
-            Object('ClassB()'),
+            #Object('Exception()'),
+            #Object('ClassA()'),
+            #Object('ClassB()'),
         ]
     def modules(self): return [
             Module('sys'),
@@ -364,16 +398,134 @@ class Python(Lang):
             self.sequences() + self.sets() + \
             self.funcs() + self.classes() + self.objects() + self.modules()
 
+
+class Javascript(Lang):
+    # ref: Standard ECMA-262 ECMAScript Language Specification Edition 5.1 (June 2011)
+    # http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-262.pdf
+
+    name = 'js'
+    prelude = ''
+
+    def run(self, code):
+        with os.popen('timeout 1 js > tmp.js.out', 'w') as p:
+            p.write(self.prelude)
+            p.write(code + '\n')
+        with open('tmp.js.out') as out:
+            output = out.readline()[2:].strip() # toss "> " prompt prefix
+        return output.strip()
+
+    def parse(self, output):
+        if output == 'true' or output == 'false':
+            return Bool(output)
+        elif output == 'NaN' or output == 'Infinity':
+            return Float(output)
+        return Undecided(output)
+
+    def types(self): return [
+        Null('undefined'),
+        Null('null'),
+        #Type('Object'),
+        #Type('Array'),
+        #Type('Boolean'),
+        #Type('Date'),
+        #Type('Error'),
+        #Type('Function'),
+        #Type('JSON'),
+        #Type('Math'),
+        #Type('Number'),
+        #Type('Object'),
+        #Type('RegExp'),
+        #Type('String'),
+    ]
+
+    def sequences(self): return [
+            Sequence('""'),
+            Sequence('[]'),
+        ]
+
+    def unary(self): return '+ - ! ~ !!'.split()
+    def binary(self): return [''] + '== != < > <= >= + - * / << >> ^ & | % ,'.split()
+    def true(self): return Bool('true')
+    def false(self): return Bool('false')
+    def bools(self): return [ self.true(), self.false() ]
+
+    def int_0(self): return Int('0')
+    def int_1(self): return Int('1')
+    def int_neg1(self): return Int('-1')
+    # http://ecma262-5.com/ELS5_HTML.htm#Section_8.5
+    def int_min(self): return Int('-9007199254740992')
+    def int_max(self): return Int('9007199254740992')
+    def ints(self): return [
+            self.int_0(),
+            self.int_1(),
+            self.int_neg1(),
+            self.int_min(),
+            self.int_max(),
+        ]
+
+    def float_0(self): return Float('0.0')
+    def float_1(self): return Float('1.0')
+    def float_neg1(self): return Float('-1.0')
+    #def float_min(self): return self.int_min()
+    #def float_max(self): return self.int_max()
+    def float_inf(self): return Float('Infinity')
+    def float_infneg(self): return Float('-Infinity')
+    def float_nan(self): return Float('NaN')
+    def float_nanneg(self): return Float('-NaN')
+    def float_epsilon(self): return Float('5.551115123125783e-17')
+    def floats(self): return [
+            self.float_0(),
+            self.float_1(),
+            self.float_neg1(),
+            #self.float_min(),
+            #self.float_max(),
+            self.float_inf(),
+            self.float_infneg(),
+            self.float_nan(),
+            self.float_nanneg(),
+            self.float_epsilon(),
+        ]
+
+    def sets(self): return [
+            Set('{}'),
+        ]
+    def funcs(self): return [
+            Func('eval'),
+            #Func('parseInt'),
+            #Func('parseFloat'),
+            Func('(function(){})'),
+        ]
+    def objects(self): return [
+            #Type('Object()'),
+            #Type('Array()'),
+            #Type('Boolean()'),
+            #Type('Date()'),
+            #Type('Error()'),
+            #Type('Function()'),
+            #Type('JSON()'),
+            Type('Math'), # static
+            #Type('Number()'),
+            #Type('Object()'),
+            #Type('RegExp()'),
+            #Type('String()'),
+        ]
+    def operands(self):
+        return \
+            self.types() + self.bools() + \
+            self.ints() + self.floats() + \
+            self.sequences() + self.sets() + \
+            self.funcs() + self.objects()
+
 import sys
 import itertools
 
 cmds = set()
 langs = [
     Python(),
+    Javascript(), # nodejs is slow to start, it's not really designed to boot up quickly...
     #Ruby,
     #PHP,
     #Perl, # boring... everthing is a fucking variable and weird behavior is not interesting
-    #Javascript, # nodejs is slow to start, it's not really designed to boot up quickly...
 ]
 
 def operations(lang):
@@ -413,6 +565,51 @@ def partition(l, callback):
             parts.append(l[i:i+1])
     return parts
 
+def esc(s):
+    return str(s).replace('"', '\\"')
+
+def graphviz(lang, vals, cmps):
+
+    G = nx.DiGraph()
+
+    # reduce the number of links by way of transitivity;
+    # that is, if AxB and BxC then we don't need AxC
+    # TODO: UNLESS the relationship is unintuitive/broken
+    link = {}
+    key = {} # graphviz-friendly key names
+    for a, op, b in cmps:
+        G.add_node(a)
+        G.add_node(b)
+        G.add_edge(a, b)
+        key[a] = "\"%s\"" % esc(a)
+        key[b] = "\"%s\"" % esc(b)
+        try:
+            link[a][b] = op
+        except KeyError:
+            link[a] = {b:op}
+
+    # remove redundant edges
+    for x, y in G.edges():
+        # if any of x's successors has a path to y then I don't need a direct path
+        if any(map(lambda s: s != x and s != y and nx.has_path(G, s, y), G.successors(x))):
+            G.remove_edge(x, y)
+
+    print 'nodes:', G.nodes()
+    print 'edges:', G.edges()
+    print 'link:', link
+    with open(lang.name + ".ord.dot", "w") as dot:
+        dot.write('digraph {\n')
+        for x in G.nodes():
+            dot.write("%s\n" % key[x])
+        for x, y in G.edges():
+            if link[x].has_key(y):
+                op = link[x][y]
+            else:
+                op = link[y][x]
+                x,y = y,x
+            dot.write('%s -> %s [label="%s"]\n' % (key[x], key[y], esc(op)))
+        dot.write('}\n')
+
 # calculate total language built-in ordinality
 # python is weird
 def ordinality(lang):
@@ -426,38 +623,30 @@ def ordinality(lang):
         if y.type == Types.NULL:
             return -1
         res = do_run_op(x, '>', y)
-        return -1 if res == 'True' else 0 if res == 'False' else 1
+        return -1 if res == lang.true() else 0 if res == lang.false() else 1
     def cmp_gte_valid(x, y):
         gte = do_run_op(x, '>', y)
         lte = do_run_op(x, '<', y)
-        return lte in ['True', 'False'] and gte in ['True', 'False'] and (lte != gte or do_run_op(x, '==', y) == 'True')
+        return lte in lang.bools() and gte in lang.bools() and (lte != gte or lang.true() == do_run_op(x, '==', y))
     vals = list(lang.operands())
-    """
-    # print table: exhaustive, but too hard to read; too little data-density
-    maxlen = max([len(str(v)) for v in vals])
-    print '%-*s %-*s' % (maxlen, '', max(5, vals[0]), vals[0],),
-    for v in vals[1:]:
-        sv = str(v)
-        print '%-*s' % (max(5, len(sv)), sv),
-    print
-    for x in vals:
-        print '%-*s' % (maxlen, x,),
-        for y in vals:
-            sy = str(y)
-            print '%-*s' % (max(5, len(sy)), do_run_op(x, '>=', y)[:1]),
-        print
-    """
-    vals2 = sorted(vals, cmp=cmp_gte_run)
-    print vals2
-    order = partition(vals2, cmp_gte_valid)
-    print order
-    orderl = [sorted(x, cmp=cmp_gte_run) for x in order]
-    print orderl
-    for l in orderl:
-        for x,y in zip(l, l[1:]):
-            print x, '>' if do_run_op(x, '>', y) == 'True' else '==',
-        print l[-1]
+    cmp_true = []
+    if os.path.exists(lang.name + '.cmps'):
+        with open(lang.name + '.cmps') as f:
+            cmp_true = json.loads(f.read())
+    else:
+        for x,y in itertools.combinations(vals, 2):
+            for op in ['>', '==', '<']:
+                if lang.true() == do_run_op(x, op, y):
+                    if op == '<':
+                        x,y,op = y,x,'>'
+                    print '"%s" -> "%s" [label="%s"]' % (esc(x), esc(y), esc(op))
+                    cmp_true.append((str(x), op, str(y)))
+                    break
+        with open(lang.name + '.cmps', 'w') as f:
+            f.write(json.dumps(cmp_true))
+    graphviz(lang, vals, cmp_true)
 
+#ordinality(Javascript())
 ordinality(Python())
 exit(1)
 

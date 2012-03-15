@@ -1,42 +1,34 @@
 # WAT
 
-Looking for code that makes you go "WAT?!"
+Simple expressions in mainstream programming languages that make you go "WAT?!"
+
+## Inspiration
+* Gary Bernhardt "Wat" https://www.destroyallsoftware.com/talks/wat CodeMash 2012 
 
 ## Results
 
 ```python
+>>> unicode() == ""
+True
+>>> unicode() > () > ""
+True
+```
+
+```python
+>>> Exception > () > "" == unicode() > type > object > Exception
+True
+```
+
+```python
+# many objects' ordinality is based on memory address, not value
 >>> xrange(0) > xrange(0)
 False
 >>> xrange(0) > xrange(0)
 True
 ```
 
-```python
-import sys
-class ClassA: pass
-
-class ClassB: pass
-
-# most built-in python types have an absolute ordinality
-xrange(0) > unicode() > type > object > Exception > () > "" > sys > range(1) > [] == range(0) > (lambda x:x) > Exception() > {} > ClassB > ClassA > bytearray() > help > float("inf") > sys.float_info.max > sys.maxint > True == 1 == 1L == 1.0 > sys.float_info.epsilon > sys.float_info.min > False == 0 == 0L == 0.0 > -1 == -1L == -1.0 > -sys.maxint > -float("inf") > None
-# NaN is != everything
-float("nan")
--float("nan")
-# complex numbers can be compared to most things except themselves
-0j
-1j
--1j
-1.0j
-0.0j
--1.0j
-# set ordinality is type-dependent
-set()
-# classes with no built-in ordinal functions seem to use `id`, which relies on memory address
-ClassA() ?= ClassB()
-# None is < everything
-None
-```
-
-## Reference/Inspiration
-* https://www.destroyallsoftware.com/talks/wat
+## Reference
+* http://docs.python.org/library/stdtypes.html
+* http://docs.python.org/reference/datamodel.html
+* Standard ECMA-262 ECMAScript Language Specification Edition 5.1 (June 2011) http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-262.pdf
 
