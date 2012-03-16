@@ -36,35 +36,6 @@ Math > ""
 undefined == null
 ```
 
-```python
-# python's ordinality allows us to construct bizarre expressions
->>> import sys
->>> xrange(0) > unicode() > type > object > Exception > () > "" > sys > range(1) > [] == range(0) > (lambda x:x) > Exception() > {} > bytearray() > help > float("inf") > sys.float_info.max > sys.maxint > True == 1 == 1L == 1.0 > sys.float_info.epsilon > sys.float_info.min > False == 0 == 0L == 0.0 > -1 == -1L == -1.0 > -sys.maxint > -float("inf") > None
-True
->>> class ClassA: pass
-...
->>> class ClassB: pass
-...
->>> xrange(0) > unicode() > type > object > Exception > () > "" > sys > range(1) > [] == range(0) > (lambda x:x) > Exception() > {} > ClassB > ClassA > bytearray() > help > float("inf") > sys.float_info.max > sys.maxint > True == 1 == 1L == 1.0 > sys.float_info.epsilon > sys.float_info.min > False == 0 == 0L == 0.0 > -1 == -1L == -1.0 > -sys.maxint > -float("inf") > None
-True
-# NaN is != everything
-float("nan")
--float("nan")
-# complex numbers can be compared to most things... except themselves
-0j
-1j
--1j
-1.0j
-0.0j
--1.0j
-# set ordinality, unlike almost everything else, cares about type
-set()
-# None is < everything
-None
-```
-"""
-
-"""
 Classic type hierarchy
 
 Null/Nil/None
@@ -102,6 +73,7 @@ Operators
 import os, re
 import networkx as nx
 import json
+from subprocess import Popen, PIPE
 
 class Types:
     UNKNOWN     = 0 # didn't even try
@@ -273,10 +245,15 @@ class Python(Lang):
     # ref: http://docs.python.org/reference/datamodel.html
 
     name = 'py'
+    longname = 'Python'
+    version = ''
     prelude = \
         "import sys\n" + \
         "class ClassA: pass\n" + \
         "class ClassB: pass\n"
+
+    def __init__(self):
+        self.version = os.popen('python --version 2>&1 | cut -d" " -f2').readline().strip()
 
     def run(self, code):
         with open('tmp.py', 'w') as w:
@@ -403,16 +380,29 @@ class Javascript(Lang):
     # ref: Standard ECMA-262 ECMAScript Language Specification Edition 5.1 (June 2011)
     # http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-262.pdf
 
+    # node.js v0.4.9
+
     name = 'js'
-    prelude = ''
+    longname = 'node.js'
+    version = ''
+    proc = None
+
+    def __init__(self):
+        self.version = os.popen('js --version').readline().strip()
+        self.proc = Popen('js', shell=True, stdin=PIPE, stdout=PIPE, close_fds=True)
 
     def run(self, code):
+        print >> self.proc.stdin, code + '\n'
+        output = self.proc.stdout.readline()[2:].strip() # toss "> " prompt prefix
+        return output.strip()
+
+        """
         with os.popen('timeout 1 js > tmp.js.out', 'w') as p:
-            p.write(self.prelude)
             p.write(code + '\n')
         with open('tmp.js.out') as out:
             output = out.readline()[2:].strip() # toss "> " prompt prefix
         return output.strip()
+        """
 
     def parse(self, output):
         if output == 'true' or output == 'false':
@@ -424,18 +414,6 @@ class Javascript(Lang):
     def types(self): return [
         Null('undefined'),
         Null('null'),
-        #Type('Object'),
-        #Type('Array'),
-        #Type('Boolean'),
-        #Type('Date'),
-        #Type('Error'),
-        #Type('Function'),
-        #Type('JSON'),
-        #Type('Math'),
-        #Type('Number'),
-        #Type('Object'),
-        #Type('RegExp'),
-        #Type('String'),
     ]
 
     def sequences(self): return [
@@ -450,6 +428,7 @@ class Javascript(Lang):
     def bools(self): return [ self.true(), self.false() ]
 
     def int_0(self): return Int('0')
+    def int_neg0(self): return Int('-0')
     def int_1(self): return Int('1')
     def int_neg1(self): return Int('-1')
     # http://ecma262-5.com/ELS5_HTML.htm#Section_8.5
@@ -457,10 +436,13 @@ class Javascript(Lang):
     def int_max(self): return Int('9007199254740992')
     def ints(self): return [
             self.int_0(),
+            self.int_neg0(),
             self.int_1(),
             self.int_neg1(),
             self.int_min(),
             self.int_max(),
+            Int('9007199254740993'), # int_max+1
+            Int('-9007199254740993'), # int_min-1
         ]
 
     def float_0(self): return Float('0.0')
@@ -472,7 +454,7 @@ class Javascript(Lang):
     def float_infneg(self): return Float('-Infinity')
     def float_nan(self): return Float('NaN')
     def float_nanneg(self): return Float('-NaN')
-    def float_epsilon(self): return Float('5.551115123125783e-17')
+    #def float_epsilon(self): return Float('5e-324') # epsilon is not well-defined
     def floats(self): return [
             self.float_0(),
             self.float_1(),
@@ -483,32 +465,64 @@ class Javascript(Lang):
             self.float_infneg(),
             self.float_nan(),
             self.float_nanneg(),
-            self.float_epsilon(),
+            #self.float_epsilon(),
         ]
 
     def sets(self): return [
             Set('{}'),
         ]
+
     def funcs(self): return [
+            Func('clearInterval'),
+            Func('clearTimeout'),
+            Func('console'),
             Func('eval'),
-            #Func('parseInt'),
-            #Func('parseFloat'),
             Func('(function(){})'),
+            Func('global'),
+            Func('isFinite'),
+            Func('isNaN'),
+            #Func('module'),
+            Func('parseFloat'),
+            Func('parseInt'),
+            #Func('process'),
+            #Func('require'),
+            Func('setInterval'),
+            Func('setTimeout'),
         ]
+
     def objects(self): return [
-            #Type('Object()'),
+            Class('Array'),
+            Class('Boolean'),
+            Class('Date'),
+            Class('Error'),
+            Class('Function'),
+            Class('JSON'),
+            Class('Math'),
+            Class('Number'),
+            Class('Object'),
+            Class('RangeError'),
+            Class('ReferenceError'),
+            Class('RegExp'),
+            Class('String'),
+            Class('SyntaxError'),
+            Class('TypeError'),
+            Class('URIError'),
+        ]
+
+    def objects(self): return [
             #Type('Array()'),
             #Type('Boolean()'),
             #Type('Date()'),
             #Type('Error()'),
             #Type('Function()'),
             #Type('JSON()'),
-            Type('Math'), # static
+            #Type('Math'),
             #Type('Number()'),
             #Type('Object()'),
             #Type('RegExp()'),
             #Type('String()'),
         ]
+
     def operands(self):
         return \
             self.types() + self.bools() + \
@@ -588,17 +602,32 @@ def graphviz(lang, vals, cmps):
         except KeyError:
             link[a] = {b:op}
 
+    #nodes_in_cycles = set(sum(nx.simple_cycles(G), []))
+    #print 'nodes_in_cycles:', nodes_in_cycles
+
     # remove redundant edges
+    # TODO: ultimately, it would be faster to NOT run redundant tests
     for x, y in G.edges():
         # if any of x's successors has a path to y then I don't need a direct path
-        if any(map(lambda s: s != x and s != y and nx.has_path(G, s, y), G.successors(x))):
+        # favor more, "shorter" paths that outline the total ordinality than
+        # "long" paths that clutter our graph
+        existing = [
+            s for s in G.successors(x)
+                if s != x and s != y and nx.has_path(G, s, y) ]
+        if existing:
+            print 'remove_edge(%s, %s) because of %s' % (x, y, existing)
             G.remove_edge(x, y)
 
-    print 'nodes:', G.nodes()
-    print 'edges:', G.edges()
-    print 'link:', link
+    #print 'nodes:', G.nodes()
+    #print 'edges:', G.edges()
+    #print 'link:', link
     with open(lang.name + ".ord.dot", "w") as dot:
         dot.write('digraph {\n')
+        dot.write('label="\\n%s\\n%s\\n"\n' % (lang.longname, lang.version))
+        dot.write('graph [fontsize=48]\n')
+        dot.write('edge [fontsize=24, penwidth=0.5, color="#999999"]\n')
+        dot.write('node [fontsize=12, shape=box, penwidth=0.5, style="filled", fillcolor="#ffffcc", color="#ff9900"]\n')
+
         for x in G.nodes():
             dot.write("%s\n" % key[x])
         for x, y in G.edges():
@@ -646,7 +675,7 @@ def ordinality(lang):
             f.write(json.dumps(cmp_true))
     graphviz(lang, vals, cmp_true)
 
-#ordinality(Javascript())
+ordinality(Javascript())
 ordinality(Python())
 exit(1)
 
