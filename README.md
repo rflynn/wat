@@ -8,6 +8,7 @@ Simple expressions in mainstream programming languages that make you go "WAT?!"
 ## Results
 
 ```python
+# python 2.7
 >>> unicode() == ""
 True
 >>> unicode() > () > ""
@@ -27,8 +28,25 @@ False
 True
 ```
 
+```php
+# php treats numeric strings as numeric values with unary operators,
+# except for ~ which for some reason executes bitwise negation on each
+# string character (wat?!)
+print_r(array( +1, +"1", -1, -"1", ~1, ~"1" ));
+Array
+(
+    [0] => 1
+    [1] => 1
+    [2] => -1
+    [3] => -1
+    [4] => -2
+    [5] => �
+)
+```
+
 ## Reference
-* http://docs.python.org/library/stdtypes.html
-* http://docs.python.org/reference/datamodel.html
-* Standard ECMA-262 ECMAScript Language Specification Edition 5.1 (June 2011) http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-262.pdf
+* "Built-in Types" http://docs.python.org/library/stdtypes.html The Python Standard Library, 2012
+* "Data Model" http://docs.python.org/reference/datamodel.html The Python Standard Library, 2012
+* "Standard ECMA-262" http://www.ecma-international.org/publications/files/ECMA-ST/Ecma-262.pdf ECMAScript Language Specification Edition 5.1 (June 2011)
+* "ECMA-262 5th Edition in HTML Format" http://ecma262-5.com/ELS5_HTML.htm#Section_8.5
 
