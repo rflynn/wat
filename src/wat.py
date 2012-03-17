@@ -1,5 +1,23 @@
 # -*- encoding: utf-8 -*-
 
+"""
+This program is designed to discover relationships between programming
+language built-ins such as first-class types (if they exist) and the base cases
+of those types.
+We abstract all the language-specific stuff in a Lang object along with
+a way to run code, then we generate expressions in that language, run them
+and read the results.
+Currently we generate we generate .dot files intended as input for the
+Graphviz graph-generating program.
+For Lang(Python) we'd generate py.out.dot, which can be transformed into a graph:
+
+    # run python code and generate py.out.dot
+    $ python wat.py 
+
+    # use graphviz to generate a graph
+    $ dot -Tpng -o py.out.png py.out.dot
+
+"""
 
 # TODO: eliminate boring string output
 
@@ -10,12 +28,10 @@
 # js   {}+[]       0
 # php  ~NaN        ��� apparently string bitwise not? why?!
 # js   global      {}
-# php  print str;  happily prints any non-reserved bareword
-# py   {type}      set([<type 'type'>])
 # rb   [print]     [nil]
 # rb   [end]       [end]
 # rb   [break]     [break]
-# js   [,]         []
+# js   [,]         [] javascript's comma operator is weird
 # ruby [1e999][1e-999] Infinity
 # php  ~"0"        � unary operators cast numeric strings to ints... except ~
 # ruby print //    (?-mix:) WTF?
@@ -24,50 +40,6 @@
    3062 1.11e-16-1             php -1                     pl -1                     py -0.9999999999999999    rb -0.9999999999999999
    3286 04294967297            php 34                     py                        rb foo.rb:1: Invalid octal digit
  24228 print"-"               php -1                     py -                      rb -
-
-
-```javascript
-/* still needs work... we need to visualize as a graph, not list of lists... */
-Infinity > 9007199254740992 > true == 1 == 1.0 > 5.551115123125783e-17 > false == 0 == 0.0
-eval > (function(){}) > {} > [] > -1 == -1.0 > -9007199254740992 > -Infinity
-NaN
--NaN
-Math > ""
-undefined == null
-```
-
-Classic type hierarchy
-
-Null/Nil/None
-Bool
-Int
-    MIN_INT
-    MAX_INT
-    ...arbitrary precision...
-Float
-    EPSILON
-    MIN_DBL
-    MAX_DBL
-Tuple
-Array
-List
-Hashtable/Dictionary/Map
-Binary
-Function
-Class
-Module
-Exception
-
-Operators
-    Unary
-    Binary
-    Ternary
-
-    Equality/Ordinal
-    Bitwise
-    Arithmetic
-    String =~
-
 """
 
 import os, re
@@ -338,6 +310,8 @@ class Python(Lang):
 
     def sequences(self): return [
             Sequence('""'),
+            Sequence('u""'),
+            Sequence('str()'),
             Sequence('unicode()'),
             Sequence('()'),
             Sequence('[]'),
@@ -346,28 +320,35 @@ class Python(Lang):
             #Sequence('xrange(sys.maxint)'),
             Sequence('bytearray()'),
         ]
+
     def sets(self): return [
             Set('{}'),
             Set('set()'),
         ]
+
     def funcs(self): return [
             Func('help'),
             Func('len'),
+            Func('id'),
             Func('(lambda x:x)'),
         ]
+
     def classes(self): return [
             Class('Exception'),
             #Class('ClassA'),
             #Class('ClassB'),
         ]
+
     def objects(self): return [
             #Object('Exception()'),
             #Object('ClassA()'),
             #Object('ClassB()'),
         ]
+
     def modules(self): return [
             Module('sys'),
         ]
+
     def operands(self):
         return \
             self.types() + self.bools() + \
@@ -383,12 +364,12 @@ class Javascript(Lang):
     # node.js v0.4.9
 
     name = 'js'
-    longname = 'node.js'
+    longname = 'Javascript'
     version = ''
     proc = None
 
     def __init__(self):
-        self.version = os.popen('js --version').readline().strip()
+        self.version = 'node.js ' + os.popen('js --version').readline().strip()
         self.proc = Popen('js', shell=True, stdin=PIPE, stdout=PIPE, close_fds=True)
 
     def run(self, code):
@@ -475,17 +456,18 @@ class Javascript(Lang):
     def funcs(self): return [
             Func('clearInterval'),
             Func('clearTimeout'),
-            Func('console'),
+            #Func('console'), # non-standard, though common
             Func('eval'),
             Func('(function(){})'),
+            Func('(function(){})()'),
             Func('global'),
             Func('isFinite'),
             Func('isNaN'),
-            #Func('module'),
+            #Func('module'), # non-standard(?) node.js
             Func('parseFloat'),
             Func('parseInt'),
-            #Func('process'),
-            #Func('require'),
+            #Func('process'), # non-standard(?) node.js
+            #Func('require'), # non-standard(?) node.js
             Func('setInterval'),
             Func('setTimeout'),
         ]
@@ -510,17 +492,6 @@ class Javascript(Lang):
         ]
 
     def objects(self): return [
-            #Type('Array()'),
-            #Type('Boolean()'),
-            #Type('Date()'),
-            #Type('Error()'),
-            #Type('Function()'),
-            #Type('JSON()'),
-            #Type('Math'),
-            #Type('Number()'),
-            #Type('Object()'),
-            #Type('RegExp()'),
-            #Type('String()'),
         ]
 
     def operands(self):
@@ -590,14 +561,14 @@ def graphviz(lang, vals, cmps):
     # that is, if AxB and BxC then we don't need AxC
     # TODO: UNLESS the relationship is unintuitive/broken
     link = {}
-    key = {} # graphviz-friendly key names
+    # graphviz-friendly key names
+    key = dict((str(k),"\"%s\"" % esc(k)) for k in vals)
     for a, op, b in cmps:
         G.add_node(a)
         G.add_node(b)
         G.add_edge(a, b)
-        key[a] = "\"%s\"" % esc(a)
-        key[b] = "\"%s\"" % esc(b)
         try:
+            # FIXME: use networkx edge attributes instead of this out-of-band crap
             link[a][b] = op
         except KeyError:
             link[a] = {b:op}
@@ -617,18 +588,29 @@ def graphviz(lang, vals, cmps):
         if existing:
             print 'remove_edge(%s, %s) because of %s' % (x, y, existing)
             G.remove_edge(x, y)
+            if not nx.has_path(G, x, y):
+                # we thought we could remove an edge and still have a path x->y,
+                # but that was an illusion due to a cycle in our directional
+                # graph; put the edge back in to preserve the path
+                G.add_edge(x, y)
+
+    print key.items()
 
     #print 'nodes:', G.nodes()
     #print 'edges:', G.edges()
     #print 'link:', link
     with open(lang.name + ".ord.dot", "w") as dot:
         dot.write('digraph {\n')
-        dot.write('label="\\n%s\\n%s\\n"\n' % (lang.longname, lang.version))
-        dot.write('graph [fontsize=48]\n')
-        dot.write('edge [fontsize=24, penwidth=0.5, color="#999999"]\n')
+        dot.write('label="%s (%s)\\n%s\\n"\n' % (
+            lang.longname, lang.version, 'Built-in Ordinality'))
+        dot.write('labelloc="t";\n')
+        # a clean style never hurt anyone
+        dot.write('graph [fontsize=24]\n')
+        dot.write('edge [fontsize=18, penwidth=0.5, color="#999999"]\n')
         dot.write('node [fontsize=12, shape=box, penwidth=0.5, style="filled", fillcolor="#ffffcc", color="#ff9900"]\n')
 
-        for x in G.nodes():
+        # ensure that anything that isn't connected still gets a visual node
+        for x in vals:
             dot.write("%s\n" % key[x])
         for x, y in G.edges():
             if link[x].has_key(y):
@@ -636,7 +618,7 @@ def graphviz(lang, vals, cmps):
             else:
                 op = link[y][x]
                 x,y = y,x
-            dot.write('%s -> %s [label="%s"]\n' % (key[x], key[y], esc(op)))
+            dot.write('%s -> %s [label="%s"]\n' % (key[str(x)], key[str(y)], esc(op)))
         dot.write('}\n')
 
 # calculate total language built-in ordinality
@@ -646,23 +628,13 @@ def ordinality(lang):
         code = '%s %s %s' % (x, op, y)
         result = lang.run(code)
         return result
-    def cmp_gte_run(x, y):
-        if x.type == Types.NULL:
-            return 1
-        if y.type == Types.NULL:
-            return -1
-        res = do_run_op(x, '>', y)
-        return -1 if res == lang.true() else 0 if res == lang.false() else 1
-    def cmp_gte_valid(x, y):
-        gte = do_run_op(x, '>', y)
-        lte = do_run_op(x, '<', y)
-        return lte in lang.bools() and gte in lang.bools() and (lte != gte or lang.true() == do_run_op(x, '==', y))
     vals = list(lang.operands())
     cmp_true = []
     if os.path.exists(lang.name + '.cmps'):
         with open(lang.name + '.cmps') as f:
             cmp_true = json.loads(f.read())
     else:
+        # try every order-insensitive combination
         for x,y in itertools.combinations(vals, 2):
             for op in ['>', '==', '<']:
                 if lang.true() == do_run_op(x, op, y):
@@ -677,33 +649,4 @@ def ordinality(lang):
 
 ordinality(Javascript())
 ordinality(Python())
-exit(1)
-
-for lang in langs:
-    results = {}
-    for code in operations(lang):
-        results[lang.name] = get_results(lang, code)
-        if is_interesting(results):
-            print '%-30s' % (code),
-            for k,v in sorted(results.items()):
-                print ': %s' % (v,),
-            print
-
-exit(1)
-
-for i in xrange(50000000):
-    # generate the nth permutation of code
-    code = nth(i)
-    # only run unique snippets, time is precious
-    if code not in cmds:
-        cmds.add(code)
-        results = {}
-        # run it in each language
-        for l in langs:
-            results[l.name] = get_results(l)
-        if is_interesting(results):
-            print '%6u %-22s' % (i, code),
-            for k,v in sorted(results.items()):
-                print '%s %-22s' % (k,v),
-            print
 
