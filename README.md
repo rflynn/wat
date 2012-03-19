@@ -68,12 +68,14 @@ true
 false
 ```
 
-Let's see how ordinality works in general
+Let's see how ordinality works in general...
+
 ```javascript
 > [0,-1,-2].sort()
 [ -1, -2, 0 ]
 // WAT
 ```
+
 Even though javascript defines comparison between built-in types the spec
 requires Array.sort() to force all array members toString()
 http://ecma262-5.com/ELS5_HTML.htm#Section_15.4.4.11
