@@ -14,8 +14,10 @@ For Lang(Python) we'd generate py.out.dot, which can be transformed into a graph
     # run python code and generate py.out.dot
     $ python wat.py 
 
-    # use graphviz to generate a graph
-    $ dot -Tpng -o py.out.png py.out.dot
+    # it'll generate...
+    $ ls *.png
+js.ord.png  py.ord.png
+
 
 """
 
@@ -45,6 +47,7 @@ For Lang(Python) we'd generate py.out.dot, which can be transformed into a graph
 import os, re
 import networkx as nx
 import json
+import subprocess
 from subprocess import Popen, PIPE
 
 class Types:
@@ -221,21 +224,26 @@ class Python(Lang):
     version = ''
     prelude = \
         "import sys\n" + \
-        "class ClassA: pass\n" + \
-        "class ClassB: pass\n"
+        "class ClassA: pass\n\n" + \
+        "class ClassB: pass\n\n"
 
     def __init__(self):
         self.version = os.popen('python --version 2>&1 | cut -d" " -f2').readline().strip()
+        self.proc = Popen('python -i 2>&1', shell=True, stdin=PIPE, stdout=PIPE, close_fds=True)
+        print >> self.proc.stdin, self.prelude + '\n\n'
 
     def run(self, code):
-        with open('tmp.py', 'w') as w:
-            w.write(self.prelude)
-            w.write('print ' + code + '\n')
-        with os.popen('timeout 1 python tmp.py 2>&1', 'r') as r:
-            output = r.readline()
+        print >> self.proc.stdin, 'eval("%s")\n' % esc(code)
+        output = self.proc.stdout.readline()
+        while output.startswith('Python ') or output.startswith('Type "help"') or output.startswith('[GCC '):
+            output = self.proc.stdout.readline()
         if 'Traceback (most recent call last):' in output:
             output = 'Error'
-        return output.strip()
+            self.proc.kill()
+            self.proc = Popen('python -i 2>&1', shell=True, stdin=PIPE, stdout=PIPE, close_fds=True)
+            print >> self.proc.stdin, self.prelude + '\n\n'
+        output = re.sub('>>> ', '', output.strip())
+        return output
 
     def parse(self, output):
         if output == 'True' or output == 'False':
@@ -297,6 +305,10 @@ class Python(Lang):
             self.float_epsilon(),
         ]
 
+    def inf_div_0(self): return Float('float("inf")/0')
+    def inf_div_inf(self): return Float('float("inf")/float("inf")')
+    def zero_div_0(self): return Float('0/0')
+
     def complexs(self): return [
             Int('0j'),
             Int('1j'),
@@ -305,6 +317,14 @@ class Python(Lang):
             Float('0.0j'),
             Float('-1.0j'),
         ]
+
+    def numbers(self):
+        return self.ints() + self.floats() + self.complexs() + \
+            [
+                self.inf_div_0(),
+                self.inf_div_inf(),
+                self.zero_div_0(),
+            ]
 
     # http://docs.python.org/library/stdtypes.html#typesseq
 
@@ -352,7 +372,7 @@ class Python(Lang):
     def operands(self):
         return \
             self.types() + self.bools() + \
-            self.ints() + self.floats() + self.complexs() + \
+            self.numbers() + \
             self.sequences() + self.sets() + \
             self.funcs() + self.classes() + self.objects() + self.modules()
 
@@ -449,6 +469,17 @@ class Javascript(Lang):
             #self.float_epsilon(),
         ]
 
+    def inf_div_0(self): return Float('float("inf")/0')
+    def inf_div_inf(self): return Float('float("inf")/float("inf")')
+    def zero_div_0(self): return Float('0/0')
+
+    def numbers(self): return self.ints() + self.floats() + \
+        [
+            self.inf_div_0(),
+            self.inf_div_inf(),
+            self.zero_div_0(),
+        ]
+
     def sets(self): return [
             Set('{}'),
         ]
@@ -497,7 +528,7 @@ class Javascript(Lang):
     def operands(self):
         return \
             self.types() + self.bools() + \
-            self.ints() + self.floats() + \
+            self.numbers() + \
             self.sequences() + self.sets() + \
             self.funcs() + self.objects()
 
@@ -538,17 +569,6 @@ BoringResults = set(['', 'error'])
 def is_interesting(results):
     vals = set(results.values())
     return vals & BoringResults == EmptySet
-
-# partition l into sublists based on callback(x,y) of consecutive list items
-def partition(l, callback):
-    parts = [l[:1]]
-    for i in xrange(1, len(l)):
-        if callback(l[i-1], l[i]):
-            parts[-1].append(l[i])
-        else:
-            print 'invalid: %s %s' % (l[i-1], l[i])
-            parts.append(l[i:i+1])
-    return parts
 
 def esc(s):
     return str(s).replace('"', '\\"')
@@ -596,9 +616,6 @@ def graphviz(lang, vals, cmps):
 
     print key.items()
 
-    #print 'nodes:', G.nodes()
-    #print 'edges:', G.edges()
-    #print 'link:', link
     with open(lang.name + ".ord.dot", "w") as dot:
         dot.write('digraph {\n')
         dot.write('label="%s (%s)\\n%s\\n"\n' % (
@@ -620,6 +637,9 @@ def graphviz(lang, vals, cmps):
                 x,y = y,x
             dot.write('%s -> %s [label="%s"]\n' % (key[str(x)], key[str(y)], esc(op)))
         dot.write('}\n')
+    gen_graph_cmd = ['dot','-Tpng','-o','%s.ord.png'%lang.name,'%s.ord.dot'%lang.name]
+    print gen_graph_cmd
+    subprocess.call(gen_graph_cmd)
 
 # calculate total language built-in ordinality
 # python is weird
@@ -630,8 +650,8 @@ def ordinality(lang):
         return result
     vals = list(lang.operands())
     cmp_true = []
-    if os.path.exists(lang.name + '.cmps'):
-        with open(lang.name + '.cmps') as f:
+    if os.path.exists(lang.name + '.ord.cache'):
+        with open(lang.name + '.ord.cmps.cache') as f:
             cmp_true = json.loads(f.read())
     else:
         # try every order-insensitive combination
