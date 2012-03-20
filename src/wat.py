@@ -651,7 +651,7 @@ def ordinality(lang):
     vals = list(lang.operands())
     cmp_true = []
     if os.path.exists(lang.name + '.ord.cache'):
-        with open(lang.name + '.ord.cmps.cache') as f:
+        with open(lang.name + '.ord.cache') as f:
             cmp_true = json.loads(f.read())
     else:
         # try every order-insensitive combination
@@ -663,7 +663,7 @@ def ordinality(lang):
                     print '"%s" -> "%s" [label="%s"]' % (esc(x), esc(y), esc(op))
                     cmp_true.append((str(x), op, str(y)))
                     break
-        with open(lang.name + '.cmps', 'w') as f:
+        with open(lang.name + '.ord.cache', 'w') as f:
             f.write(json.dumps(cmp_true))
     graphviz(lang, vals, cmp_true)
 
