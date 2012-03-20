@@ -12,7 +12,14 @@ Python 2.7.2+
 
 ```python
 # python appears to have a cycle in the ordinality of built-in types
->>> unicode() > () > "" == unicode()
+>>> () > "" == unicode() > ()
+True
+# to be clear...
+>>> () > ""
+True
+>>> "" == unicode()
+True
+>>> unicode() > ()
 True
 ```
 
