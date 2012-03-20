@@ -469,8 +469,8 @@ class Javascript(Lang):
             #self.float_epsilon(),
         ]
 
-    def inf_div_0(self): return Float('float("inf")/0')
-    def inf_div_inf(self): return Float('float("inf")/float("inf")')
+    def inf_div_0(self): return Float('Infinity/0')
+    def inf_div_inf(self): return Float('Infinity/Infinity')
     def zero_div_0(self): return Float('0/0')
 
     def numbers(self): return self.ints() + self.floats() + \
